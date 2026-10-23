@@ -63,6 +63,22 @@
   #drawer a { display:block; padding:12px 24px; font-size:18px; color:var(--txt); text-decoration:none; border-bottom:1px solid #f0f0f0; }
   #drawer a:active { background:#f0f3ff; }
   #drawer .close { padding:14px 16px; text-align:right; font-size:22px; }
+  /* 오늘 현황판 */
+  .big { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .big div { border-radius:12px; padding:16px 12px; text-align:center; }
+  .big .in { background:#e6f1fb; color:#0c447c; } .big .out { background:#fcebeb; color:#791f1f; }
+  .big .lbl { font-size:15px; } .big .num { font-size:30px; font-weight:800; margin:4px 0; } .big .cnt { font-size:13px; opacity:.8; }
+  .mini { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin-top:10px; text-align:center; }
+  .mini div { background:#f7f8fa; border-radius:10px; padding:8px 4px; }
+  .mini .k { font-size:12px; color:var(--sub); } .mini .v { font-size:17px; font-weight:700; }
+  .counterBox { display:flex; justify-content:space-between; align-items:center; border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:12px; }
+  .flow .item { padding:11px 4px; }
+  .flow .item.fresh { background:#faeeda; }
+  .flow .amt { font-size:19px; }
+  .machines { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .machines div { background:#e6f1fb; border-radius:10px; padding:9px 10px; display:flex; justify-content:space-between; color:#0c447c; font-weight:700; }
+  .machines div span:last-child { color:#185fa5; }
+  .refresh { font-size:12px; color:var(--sub); }
 </style>
 </head>
 <body>
@@ -78,6 +94,8 @@
 <div id="dim" class="hidden" onclick="closeMenu()"></div>
 <nav id="drawer">
   <div class="close" onclick="closeMenu()">✕</div>
+  <h4>현황</h4>
+  <a href="#" onclick="go('today')">오늘 현황</a>
   <h4>회원관리</h4>
   <a href="#" onclick="go('members')">회원목록</a>
   <a href="#" onclick="go('visitors')">방문 회원 목록</a>
@@ -104,7 +122,41 @@
   <h2>로그인</h2>
   <label>직원 키</label>
   <input id="keyInput" placeholder="예: ADMIN1" autocapitalize="characters">
+  <label>비밀번호</label>
+  <input id="pwInput" type="password" placeholder="없으면 비워두세요">
   <button class="btn" onclick="login()">들어가기</button>
+</section>
+
+<!-- ===== 오늘 현황판 (관리자 첫 화면) ===== -->
+<section id="p-today" class="page hidden">
+  <div style="display:flex;justify-content:space-between;align-items:baseline">
+    <h1>오늘 현황</h1><span class="refresh" id="tdRefresh"></span>
+  </div>
+  <div class="card">
+    <div class="big">
+      <div class="in"><div class="lbl">적립</div><div class="num" id="tdIn">0</div><div class="cnt" id="tdInC">0건</div></div>
+      <div class="out"><div class="lbl">차감</div><div class="num" id="tdOut">0</div><div class="cnt" id="tdOutC">0건</div></div>
+    </div>
+    <div class="mini">
+      <div><div class="k">차이</div><div class="v" id="tdDiff">0</div></div>
+      <div><div class="k">손님 보유</div><div class="v" id="tdHold">0</div></div>
+      <div><div class="k">오늘 회원</div><div class="v" id="tdMem">0명</div></div>
+    </div>
+    <div class="counterBox">
+      <span>카운터 번호 <b id="tdCounter">없음</b></span>
+      <button class="btn gray small" style="width:auto" onclick="setCounter()">바꾸기</button>
+    </div>
+    <p class="sub" style="margin:4px 2px 0">이 번호로 입력한 기록은 "카운터"로 표시되고 기계 현황에서는 빠져요</p>
+  </div>
+  <div class="card flow">
+    <h2>지금 흐름 <span class="sub">최근 기록</span></h2>
+    <div id="tdFlow" class="list"></div>
+    <button class="btn gray small" style="margin-top:10px" onclick="go('settle')">전체 기록 보기 (정산)</button>
+  </div>
+  <div class="card">
+    <h2>기계 현황 <span class="sub">오늘 적립 많은 순</span></h2>
+    <div id="tdMachines" class="machines"></div>
+  </div>
 </section>
 
 <!-- ===== 입력 (직원 화면 / 관리자 입력) ===== -->
@@ -230,6 +282,8 @@
     <label>정산(마감) 기준 시각</label>
     <select id="sCut"></select>
     <p class="sub">예: 7시 → 10월 23일 07:00 ~ 10월 24일 06:59 가 "10월 23일" 영업일</p>
+    <label>카운터 번호 (비우면 안 씀)</label>
+    <input id="sCounter" type="number" inputmode="numeric" placeholder="예: 100 또는 1000">
     <button class="btn" onclick="saveSettings()">저장</button>
   </div>
 </section>
@@ -252,6 +306,7 @@
     <h3>새 키 추가</h3>
     <label>이름</label><input id="stName">
     <label>키 (영문/숫자 6자리 추천)</label><input id="stKey" autocapitalize="characters">
+    <label>비밀번호 (비우면 키만으로 로그인)</label><input id="stPw" placeholder="예: 1234">
     <label>권한</label><select id="stRole"><option value="staff">직원</option><option value="admin">관리자</option></select>
     <button class="btn small" onclick="addStaff()">추가</button>
   </div>
@@ -266,7 +321,8 @@ const SUPABASE_URL = "https://kdqpvbrffjylybddbhvo.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkcXB2YnJmZmp5bHliZGRiaHZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3NTYyOTYsImV4cCI6MjEwODMzMjI5Nn0.cxcGjg0oNp9pVfbgkpJS89S72j4kAMt5Pw0-9ZiRO88";
 // ===============================================================
 
-let sb=null, me=null, sel=null, cutoff=7, shopName='포인트 정산', lastRows=[], curMember=null;
+let sb=null, me=null, sel=null, cutoff=7, shopName='포인트 정산', lastRows=[], curMember=null, counterNo=null, tdTimer=null, tdLastId=0;
+const mlabel = n => (counterNo!==null && n===counterNo) ? '카운터' : `기계 ${n}`;
 const $ = id => document.getElementById(id);
 const fmt = n => Number(n||0).toLocaleString('ko-KR');
 const toast = m => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); };
@@ -285,25 +341,26 @@ async function init(){
   if(!SUPABASE_URL||!SUPABASE_KEY){ $('setup').classList.remove('hidden'); return; }
   sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
   const { data } = await sb.from('settings').select('*').eq('id',1).single();
-  if(data){ cutoff=data.cutoff_hour; if(data.shop_name) shopName=data.shop_name; }
+  if(data){ cutoff=data.cutoff_hour; if(data.shop_name) shopName=data.shop_name; counterNo=(data.counter_no??null); }
   $('hdr').textContent=shopName;
-  const saved=localStorage.getItem('staffKey');
-  if(saved){ $('keyInput').value=saved; await login(true); } else $('login').classList.remove('hidden');
+  const saved=localStorage.getItem('staffKey'), savedPw=localStorage.getItem('staffPw')||'';
+  if(saved){ $('keyInput').value=saved; $('pwInput').value=savedPw; await login(true); } else $('login').classList.remove('hidden');
 }
 
 async function login(silent){
-  const key=$('keyInput').value.trim().toUpperCase(); if(!key) return;
+  const key=$('keyInput').value.trim().toUpperCase(), pw=$('pwInput').value.trim(); if(!key) return;
   const { data, error } = await sb.from('staff_keys').select('*').eq('key',key).eq('active',true).maybeSingle();
   if(error){ alert('연결 오류: '+error.message); $('login').classList.remove('hidden'); return; }
   if(!data){ if(!silent) toast('키가 없거나 정지됨'); $('login').classList.remove('hidden'); return; }
-  me=data; localStorage.setItem('staffKey',key);
+  if(data.password && data.password!==pw){ if(!silent) toast('비밀번호가 틀렸어요'); $('login').classList.remove('hidden'); return; }
+  me=data; localStorage.setItem('staffKey',key); localStorage.setItem('staffPw',pw);
   $('login').classList.add('hidden'); $('logoutBtn').classList.remove('hidden');
   $('hdr').textContent=`${shopName} · ${me.name}`;
   if(!silent) sb.from('access_logs').insert({staff_key:me.key, staff_name:me.name, device:navigator.userAgent.slice(0,120)}).then(()=>{});
-  if(me.role==='admin'){ $('menuBtn').classList.remove('hidden'); go('settle'); }
+  if(me.role==='admin'){ $('menuBtn').classList.remove('hidden'); go('today'); }
   else go('input');
 }
-function logout(){ localStorage.removeItem('staffKey'); location.reload(); }
+function logout(){ localStorage.removeItem('staffKey'); localStorage.removeItem('staffPw'); location.reload(); }
 function openMenu(){ $('drawer').classList.add('open'); $('dim').classList.remove('hidden'); }
 function closeMenu(){ $('drawer').classList.remove('open'); $('dim').classList.add('hidden'); }
 function slog(action, detail){ return sb.from('shop_logs').insert({staff_key:me.key, staff_name:me.name, action, detail}); }
@@ -312,7 +369,8 @@ function go(name){
   closeMenu();
   document.querySelectorAll('.page').forEach(p=>p.classList.add('hidden'));
   $('p-'+name).classList.remove('hidden'); window.scrollTo(0,0);
-  const t=bizDate();
+  if(tdTimer){ clearInterval(tdTimer); tdTimer=null; }
+  if(name==='today'){ loadToday(); tdTimer=setInterval(loadToday, 10000); }
   if(name==='input') loadMy();
   if(name==='members') loadMembers();
   if(name==='visitors'){ setToday('vDate'); loadVisitors(); }
@@ -338,6 +396,36 @@ function sumBy(rows, keyFn){
   const m={};
   rows.forEach(t=>{ const k=keyFn(t); m[k]??={적립:0,차감:0,서비스:0,n:0}; m[k][t.type]+=t.amount; m[k].n++; });
   return m;
+}
+
+// ---------- 오늘 현황판 ----------
+async function loadToday(){
+  const rows=await fetchTx(bizDate(),bizDate());
+  const s=sumBy(rows,()=>'all').all||{적립:0,차감:0,서비스:0,n:0}; const c=sumBy(rows,t=>t.type);
+  $('tdIn').textContent=fmt(s.적립); $('tdInC').textContent=`${c.적립?.n||0}건`;
+  $('tdOut').textContent=fmt(s.차감); $('tdOutC').textContent=`${c.차감?.n||0}건`;
+  const diff=s.적립-s.차감; $('tdDiff').textContent=(diff>=0?'+':'')+fmt(diff);
+  $('tdMem').textContent=`${new Set(rows.map(t=>t.member_id)).size}명`;
+  const { data: tot } = await sb.from('member_balances').select('balance');
+  $('tdHold').textContent=fmt((tot||[]).reduce((a,b)=>a+b.balance,0));
+  $('tdCounter').textContent=counterNo===null?'없음':counterNo;
+  const newest=rows[0]?.id||0;
+  $('tdFlow').innerHTML=rows.slice(0,10).map(t=>`<div class="item ${(tdLastId&&t.id>tdLastId)?'fresh':''}">
+    <div><span class="sub">${hhmm(t.created_at)}</span> &nbsp;<span class="name">${t.member_name}</span> <span class="sub">· ${mlabel(t.machine_no)}</span></div>
+    <div class="amt ${t.type}">${t.type==='차감'?'−':'+'}${fmt(t.amount)}</div></div>`).join('')||'<div class="sub" style="padding:8px">아직 기록 없음</div>';
+  tdLastId=newest;
+  const by=sumBy(rows.filter(t=>!(counterNo!==null&&t.machine_no===counterNo)), t=>t.machine_no);
+  const top=Object.keys(by).map(k=>({k,v:by[k].적립})).filter(x=>x.v>0).sort((a,b)=>b.v-a.v).slice(0,6);
+  $('tdMachines').innerHTML=top.map(x=>`<div><span>기계 ${x.k}</span><span>+${fmt(x.v)}</span></div>`).join('')||'<div class="sub" style="grid-column:1/3;background:none;color:var(--sub);font-weight:400">아직 없음</div>';
+  $('tdRefresh').textContent=`${bizDate().slice(5).replace('-','월 ')}일 · ${hhmm(new Date().toISOString())} 갱신`;
+}
+async function setCounter(){
+  const v=prompt('카운터 번호 (지우려면 비워두세요)', counterNo===null?'':counterNo); if(v===null) return;
+  const n=v.trim()===''?null:parseInt(v);
+  if(v.trim()!==''&&isNaN(n)) return toast('숫자만 입력하세요');
+  const { error } = await sb.from('settings').update({counter_no:n}).eq('id',1);
+  if(error) return toast('실패: '+error.message);
+  counterNo=n; slog('카운터번호변경', n===null?'없음':String(n)); toast('저장됨'); loadToday();
 }
 
 // ---------- 입력 ----------
@@ -374,7 +462,7 @@ async function saveTx(type){
 }
 async function loadMy(){
   const rows=await fetchTx(bizDate(),bizDate(), r=>r.eq('staff_key',me.key).limit(50));
-  $('myList').innerHTML=rows.map(t=>`<div class="item"><div><div class="name">${t.member_name}</div><div class="sub">${hhmm(t.created_at)} · 기계 ${t.machine_no}</div></div>
+  $('myList').innerHTML=rows.map(t=>`<div class="item"><div><div class="name">${t.member_name}</div><div class="sub">${hhmm(t.created_at)} · ${mlabel(t.machine_no)}</div></div>
     <div class="amt ${t.type}">${t.type} ${fmt(t.amount)}</div></div>`).join('')||'<div class="sub" style="padding:8px">아직 없음</div>';
 }
 
@@ -394,7 +482,7 @@ async function openMember(m){
   $('mdToggle').onclick=async()=>{ await sb.from('members').update({active:!m.active}).eq('id',m.id);
     slog(m.active?'회원비활성화':'회원활성화', `${m.name} ${m.phone}`); toast('변경됨'); m.active=!m.active; openMember(m); };
   const { data } = await sb.from('transaction_view').select('*').eq('member_id',m.id).is('deleted_at',null).order('created_at',{ascending:false}).limit(200);
-  $('mdHist').innerHTML=(data||[]).map(t=>`<tr><td>${dt(t.created_at)}</td><td>${t.staff_key||''}</td><td>${t.machine_no}</td><td class="amt ${t.type}">${t.type}</td><td class="amt ${t.type}">${fmt(t.amount)}</td></tr>`).join('')||'<tr><td colspan=5 class="sub">내역 없음</td></tr>';
+  $('mdHist').innerHTML=(data||[]).map(t=>`<tr><td>${dt(t.created_at)}</td><td>${t.staff_key||''}</td><td>${mlabel(t.machine_no)}</td><td class="amt ${t.type}">${t.type}</td><td class="amt ${t.type}">${fmt(t.amount)}</td></tr>`).join('')||'<tr><td colspan=5 class="sub">내역 없음</td></tr>';
 }
 async function deleteMember(){
   const m=curMember; if(!m) return;
@@ -427,7 +515,7 @@ async function loadSettle(){
     <div><div class="k">차이 (적립−차감)</div><div class="v">${fmt(s.적립-s.차감)}</div></div>
     <div style="grid-column:1/3"><div class="k">전체 회원 누적 포인트</div><div class="v">${fmt(total)}</div></div>`;
   $('recBody').innerHTML=lastRows.map(t=>`<tr><td>${dt(t.created_at)}</td><td>${t.staff_key||''}</td><td>${t.member_name}<br><span class="sub">${t.phone}</span></td>
-    <td>${t.machine_no}</td><td class="amt ${t.type}">${fmt(t.amount)}</td><td><button class="del" onclick="delTx(${t.id},'${t.member_name}',${t.amount},'${t.type}')">삭제</button></td></tr>`).join('')||'<tr><td colspan=6 class="sub">기록 없음</td></tr>';
+    <td>${mlabel(t.machine_no)}</td><td class="amt ${t.type}">${fmt(t.amount)}</td><td><button class="del" onclick="delTx(${t.id},'${t.member_name}',${t.amount},'${t.type}')">삭제</button></td></tr>`).join('')||'<tr><td colspan=6 class="sub">기록 없음</td></tr>';
 }
 async function delTx(id,name,amount,type){ if(!confirm('이 기록을 삭제할까요?')) return;
   const { error } = await sb.from('transactions').update({deleted_at:new Date().toISOString()}).eq('id',id);
@@ -456,12 +544,12 @@ async function downloadExcel(){
 }
 
 // ---------- 설정 ----------
-function loadSettings(){ $('sShop').value=shopName; $('sCut').innerHTML=[...Array(24).keys()].map(h=>`<option value="${h}" ${h===cutoff?'selected':''}>${h}시</option>`).join(''); }
+function loadSettings(){ $('sShop').value=shopName; $('sCounter').value=counterNo===null?'':counterNo; $('sCut').innerHTML=[...Array(24).keys()].map(h=>`<option value="${h}" ${h===cutoff?'selected':''}>${h}시</option>`).join(''); }
 async function saveSettings(){
-  const shop_name=$('sShop').value.trim()||'포인트 정산', cutoff_hour=parseInt($('sCut').value);
-  const { error } = await sb.from('settings').update({shop_name,cutoff_hour}).eq('id',1);
+  const shop_name=$('sShop').value.trim()||'포인트 정산', cutoff_hour=parseInt($('sCut').value), counter_no=$('sCounter').value.trim()===''?null:parseInt($('sCounter').value);
+  const { error } = await sb.from('settings').update({shop_name,cutoff_hour,counter_no}).eq('id',1);
   if(error) return toast('실패: '+error.message);
-  slog('설정변경',`매장명=${shop_name}, 마감=${cutoff_hour}시`); shopName=shop_name; cutoff=cutoff_hour; $('hdr').textContent=`${shopName} · ${me.name}`; toast('저장됨');
+  slog('설정변경',`매장명=${shop_name}, 마감=${cutoff_hour}시, 카운터=${counter_no??'없음'}`); shopName=shop_name; cutoff=cutoff_hour; counterNo=counter_no; $('hdr').textContent=`${shopName} · ${me.name}`; toast('저장됨');
 }
 
 // ---------- 로그 ----------
@@ -472,12 +560,17 @@ async function loadShopLog(){ const { data } = await sb.from('shop_logs').select
 
 // ---------- 직원 키 ----------
 async function loadStaffs(){ const { data } = await sb.from('staff_keys').select('*').order('created_at');
-  $('staffList').innerHTML=(data||[]).map(s=>`<div class="item"><div><div class="name">${s.name} <span class="sub">(${s.role==='admin'?'관리자':'직원'})</span></div><div class="sub">키: ${s.key}${s.active?'':' · 정지됨'}</div></div>
-    <button class="del" onclick="toggleStaff('${s.key}','${s.name}',${!s.active})">${s.active?'정지':'활성화'}</button></div>`).join(''); }
-async function addStaff(){ const name=$('stName').value.trim(), key=$('stKey').value.trim().toUpperCase(), role=$('stRole').value;
+  $('staffList').innerHTML=(data||[]).map(s=>`<div class="item"><div><div class="name">${s.name} <span class="sub">(${s.role==='admin'?'관리자':'직원'})</span></div><div class="sub">키: ${s.key} · 비밀번호 ${s.password?'있음':'없음'}${s.active?'':' · 정지됨'}</div></div>
+    <div style="text-align:right"><button class="link" onclick="setStaffPw('${s.key}','${s.name}')">비밀번호</button><br><button class="del" onclick="toggleStaff('${s.key}','${s.name}',${!s.active})">${s.active?'정지':'활성화'}</button></div></div>`).join(''); }
+async function setStaffPw(key,name){
+  const v=prompt(`${name}(${key}) 새 비밀번호 (지우려면 비워두세요)`); if(v===null) return;
+  const password=v.trim()===''?null:v.trim();
+  const { error } = await sb.from('staff_keys').update({password}).eq('key',key); if(error) return toast('실패: '+error.message);
+  slog('비밀번호변경',`${name} ${key}`); if(key===me.key) localStorage.setItem('staffPw',password||''); toast('저장됨'); loadStaffs(); }
+async function addStaff(){ const name=$('stName').value.trim(), key=$('stKey').value.trim().toUpperCase(), role=$('stRole').value, password=$('stPw').value.trim()||null;
   if(!name||key.length<4) return toast('이름/키 확인(키 4자 이상)');
-  const { error } = await sb.from('staff_keys').insert({name,key,role}); if(error) return toast('실패: '+error.message);
-  slog('직원키추가',`${name} ${key} ${role}`); $('stName').value=''; $('stKey').value=''; toast('추가됨'); loadStaffs(); }
+  const { error } = await sb.from('staff_keys').insert({name,key,role,password}); if(error) return toast('실패: '+error.message);
+  slog('직원키추가',`${name} ${key} ${role}`); $('stName').value=''; $('stKey').value=''; $('stPw').value=''; toast('추가됨'); loadStaffs(); }
 async function toggleStaff(key,name,active){ if(key===me.key&&!active) return toast('내 키는 정지할 수 없어요');
   await sb.from('staff_keys').update({active}).eq('key',key); slog(active?'직원키활성화':'직원키정지',`${name} ${key}`); loadStaffs(); }
 
