@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>포인트 정산</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --line:#e3e5ea; --txt:#1b1d22; --sub:#6b7280;
+          --blue:#1f5fd6; --red:#d63b2f; --green:#1a9a5a; --dark:#111; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+         background:var(--bg); color:var(--txt); font-size:17px; }
+  header { background:var(--dark); color:#fff; padding:14px 16px; display:flex;
+           justify-content:space-between; align-items:center; position:sticky; top:0; z-index:5; }
+  header b { font-size:18px; }
+  header button { background:none; border:1px solid #777; color:#fff; border-radius:8px;
+                  padding:8px 12px; font-size:15px; }
+  main { padding:14px; max-width:720px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
+          padding:16px; margin-bottom:14px; }
+  h2 { margin:0 0 12px; font-size:20px; }
+  label { display:block; font-size:14px; color:var(--sub); margin:10px 0 4px; }
+  input, select { width:100%; font-size:20px; padding:12px; border:1px solid var(--line);
+                  border-radius:10px; background:#fff; }
+  input[type=number] { font-size:24px; font-weight:700; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  .btn { width:100%; font-size:19px; font-weight:700; padding:16px; border:none;
+         border-radius:12px; color:#fff; background:var(--dark); margin-top:10px; }
+  .btn.blue { background:var(--blue); } .btn.red { background:var(--red); }
+  .btn.green { background:var(--green); } .btn.gray { background:#9aa0ab; }
+  .btn.small { font-size:15px; padding:10px; margin-top:0; }
+  .btn:disabled { opacity:.5; }
+  .list div.item { padding:12px 4px; border-bottom:1px solid var(--line);
+                   display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .item .name { font-weight:700; font-size:18px; }
+  .item .sub { color:var(--sub); font-size:14px; }
+  .amt.적립 { color:var(--blue); font-weight:700; }
+  .amt.차감 { color:var(--red); font-weight:700; }
+  .amt.서비스 { color:var(--green); font-weight:700; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; overflow-x:auto; }
+  .tabs button { flex:none; padding:10px 14px; border-radius:20px; border:1px solid var(--line);
+                 background:#fff; font-size:15px; }
+  .tabs button.on { background:var(--dark); color:#fff; border-color:var(--dark); }
+  .sum { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  .sum div { background:#f7f8fa; border-radius:10px; padding:12px; }
+  .sum .k { font-size:13px; color:var(--sub); }
+  .sum .v { font-size:22px; font-weight:800; }
+  .hidden { display:none; }
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+           background:#222; color:#fff; padding:12px 18px; border-radius:10px; font-size:16px;
+           opacity:0; transition:.2s; pointer-events:none; }
+  .toast.show { opacity:1; }
+  .selected { background:#eef3ff; border:2px solid var(--blue); border-radius:12px; padding:12px; }
+  .selected .bal { font-size:26px; font-weight:800; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { border-bottom:1px solid var(--line); padding:8px 4px; text-align:center; }
+  th { background:#f7f8fa; }
+  .del { color:var(--red); background:none; border:none; font-size:14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <b id="hdr">포인트 정산</b>
+  <button id="logoutBtn" class="hidden" onclick="logout()">로그아웃</button>
+</header>
+
+<main>
+
+<!-- ===== 설정 안내 (URL/KEY 비어있을 때) ===== -->
+<section id="setup" class="card hidden">
+  <h2>처음 설정</h2>
+  <p>이 파일(index.html)을 열어서 맨 아래 <b>SUPABASE_URL</b> 과 <b>SUPABASE_KEY</b> 에
+  Supabase 프로젝트의 Project URL 과 anon 키를 넣어주세요.</p>
+</section>
+
+<!-- ===== 로그인 ===== -->
+<section id="login" class="card hidden">
+  <h2>로그인</h2>
+  <label>직원 키</label>
+  <input id="keyInput" placeholder="예: ADMIN1" autocapitalize="characters">
+  <button class="btn" onclick="login()">들어가기</button>
+</section>
+
+<!-- ===== 직원 화면 ===== -->
+<section id="staff" class="hidden">
+  <div class="card">
+    <h2>회원 찾기</h2>
+    <input id="q" placeholder="전화번호 뒷자리 또는 닉네임" oninput="searchMembers()">
+    <div id="results" class="list"></div>
+    <button class="btn gray small" style="margin-top:10px" onclick="toggleNew()">+ 신규 회원 등록</button>
+    <div id="newBox" class="hidden">
+      <label>닉네임</label><input id="newName">
+      <label>전화번호</label><input id="newPhone" inputmode="numeric" placeholder="01012345678">
+      <button class="btn small" onclick="addMember()">등록</button>
+    </div>
+  </div>
+
+  <div id="entryCard" class="card hidden">
+    <div class="selected">
+      <div class="name" id="selName"></div>
+      <div class="sub" id="selPhone"></div>
+      <div class="bal"><span id="selBal">0</span> P</div>
+    </div>
+    <label>기계 번호</label>
+    <input id="machine" type="number" inputmode="numeric" placeholder="예: 13 또는 100">
+    <label>금액</label>
+    <input id="amount" type="number" inputmode="numeric" placeholder="30000">
+    <div class="row">
+      <button class="btn blue" onclick="saveTx('적립')">적립</button>
+      <button class="btn red" onclick="saveTx('차감')">차감</button>
+    </div>
+    <button class="btn green small" style="margin-top:8px" onclick="saveTx('서비스')">서비스(무료 지급)</button>
+    <button class="btn gray small" style="margin-top:8px" onclick="clearSel()">다른 회원 선택</button>
+  </div>
+
+  <div class="card">
+    <h2>오늘 내가 입력한 기록</h2>
+    <div id="myList" class="list"></div>
+  </div>
+</section>
+
+<!-- ===== 관리자 화면 ===== -->
+<section id="admin" class="hidden">
+  <div class="tabs">
+    <button class="on" onclick="tab('settle',this)">정산</button>
+    <button onclick="tab('records',this)">기록</button>
+    <button onclick="tab('members',this)">회원</button>
+    <button onclick="tab('staffs',this)">직원키</button>
+    <button onclick="tab('input',this)">입력</button>
+  </div>
+
+  <div id="t-settle" class="card">
+    <h2>정산</h2>
+    <div class="row">
+      <div><label>시작일</label><input type="date" id="d1"></div>
+      <div><label>종료일</label><input type="date" id="d2"></div>
+    </div>
+    <div class="row">
+      <div><label>기계번호 (비우면 전체)</label><input id="fMachine" type="number"></div>
+      <div><label>직원키 (비우면 전체)</label><input id="fKey"></div>
+    </div>
+    <button class="btn" onclick="loadSettle()">검색</button>
+    <p class="sub" id="cutInfo"></p>
+    <div class="sum" id="sumBox"></div>
+    <h2 style="margin-top:16px">기계별</h2>
+    <table><thead><tr><th>기계</th><th>적립</th><th>차감</th><th>서비스</th><th>차이</th></tr></thead>
+      <tbody id="byMachine"></tbody></table>
+    <button class="btn gray small" style="margin-top:12px" onclick="downloadCsv()">엑셀(CSV) 다운로드</button>
+  </div>
+
+  <div id="t-records" class="card hidden">
+    <h2>기록 (검색 조건은 정산 탭 기준)</h2>
+    <table><thead><tr><th>시간</th><th>키</th><th>회원</th><th>기계</th><th>금액</th><th></th></tr></thead>
+      <tbody id="recBody"></tbody></table>
+  </div>
+
+  <div id="t-members" class="card hidden">
+    <h2>회원 (누적 포인트)</h2>
+    <input id="mq" placeholder="검색" oninput="loadMembers()">
+    <div id="memberList" class="list"></div>
+  </div>
+
+  <div id="t-staffs" class="card hidden">
+    <h2>직원 키</h2>
+    <div id="staffList" class="list"></div>
+    <label>새 직원 이름</label><input id="stName">
+    <label>키 (영문/숫자 6자리 추천)</label><input id="stKey" autocapitalize="characters">
+    <label>권한</label>
+    <select id="stRole"><option value="staff">직원</option><option value="admin">관리자</option></select>
+    <button class="btn small" onclick="addStaff()">추가</button>
+  </div>
+
+  <div id="t-input" class="hidden"></div>
+</section>
+
+</main>
+<div id="toast" class="toast"></div>
+
+<script>
+// ======================= 여기 두 줄만 채우면 됩니다 =======================
+const SUPABASE_URL = "https://kdqpvbrffjylybddbhvo.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkcXB2YnJmZmp5bHliZGRiaHZvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI3NTYyOTYsImV4cCI6MjEwODMzMjI5Nn0.cxcGjg0oNp9pVfbgkpJS89S72j4kAMt5Pw0-9ZiRO88";
+// =====================================================================
+
+let sb = null, me = null, sel = null, cutoff = 7, lastRows = [];
+
+const $ = id => document.getElementById(id);
+const fmt = n => Number(n||0).toLocaleString('ko-KR');
+const toast = m => { const t=$('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); };
+const hhmm = iso => new Date(iso).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+const dt = iso => new Date(iso).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+
+// 영업일 계산: 오전 7시 기준. 지금이 새벽 3시면 어제 날짜가 영업일.
+function bizDate(d=new Date()){ const x=new Date(d); x.setHours(x.getHours()-cutoff); return x.toISOString().slice(0,10); }
+function bizRange(from, to){ // from~to 영업일 → 실제 시각 범위
+  const s=new Date(from+'T00:00:00'); s.setHours(cutoff);
+  const e=new Date(to+'T00:00:00'); e.setDate(e.getDate()+1); e.setHours(cutoff);
+  return [s.toISOString(), e.toISOString()];
+}
+
+async function init(){
+  if(!SUPABASE_URL || !SUPABASE_KEY){ $('setup').classList.remove('hidden'); return; }
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  const { data } = await sb.from('settings').select('*').eq('id',1).single();
+  if(data){ cutoff = data.cutoff_hour; if(data.shop_name) $('hdr').textContent = data.shop_name; }
+  const saved = localStorage.getItem('staffKey');
+  if(saved){ $('keyInput').value = saved; await login(true); }
+  else $('login').classList.remove('hidden');
+}
+
+async function login(silent){
+  const key = $('keyInput').value.trim().toUpperCase();
+  if(!key) return;
+  const { data, error } = await sb.from('staff_keys').select('*').eq('key',key).eq('active',true).maybeSingle();
+  if(error){ alert('연결 오류: '+error.message); $('login').classList.remove('hidden'); return; }
+  if(!data){ if(!silent) toast('키가 없거나 정지됨'); $('login').classList.remove('hidden'); return; }
+  me = data; localStorage.setItem('staffKey', key);
+  $('login').classList.add('hidden'); $('logoutBtn').classList.remove('hidden');
+  $('hdr').textContent += ` · ${me.name}`;
+  if(me.role==='admin'){ $('admin').classList.remove('hidden'); $('t-input').appendChild($('staff')); $('staff').classList.remove('hidden');
+    const t=bizDate(); $('d1').value=t; $('d2').value=t; loadSettle(); }
+  else { $('staff').classList.remove('hidden'); }
+  loadMy();
+}
+function logout(){ localStorage.removeItem('staffKey'); location.reload(); }
+
+// ---------- 직원: 회원 검색/등록 ----------
+async function searchMembers(){
+  const q = $('q').value.trim(); const box=$('results'); box.innerHTML='';
+  if(q.length<2) return;
+  let r = sb.from('member_balances').select('*').eq('active',true).limit(10);
+  r = /^\d+$/.test(q) ? r.like('phone', `%${q}%`) : r.ilike('name', `%${q}%`);
+  const { data } = await r;
+  (data||[]).forEach(m=>{
+    const d=document.createElement('div'); d.className='item';
+    d.innerHTML=`<div><div class="name">${m.name}</div><div class="sub">${m.phone}</div></div><div><b>${fmt(m.balance)} P</b></div>`;
+    d.onclick=()=>pick(m); box.appendChild(d);
+  });
+  if(!data?.length) box.innerHTML='<div class="sub" style="padding:8px">없음 — 신규 등록하세요</div>';
+}
+function toggleNew(){ $('newBox').classList.toggle('hidden'); }
+async function addMember(){
+  const name=$('newName').value.trim(), phone=$('newPhone').value.replace(/\D/g,'');
+  if(!name||phone.length<8) return toast('이름/전화번호 확인');
+  const { data, error } = await sb.from('members').insert({name, phone}).select().single();
+  if(error) return toast('등록 실패: '+error.message);
+  toast('등록 완료'); $('newName').value=''; $('newPhone').value=''; $('newBox').classList.add('hidden');
+  pick({...data, balance:0});
+}
+function pick(m){ sel=m; $('selName').textContent=m.name; $('selPhone').textContent=m.phone;
+  $('selBal').textContent=fmt(m.balance); $('entryCard').classList.remove('hidden'); $('amount').focus(); }
+function clearSel(){ sel=null; $('entryCard').classList.add('hidden'); $('q').value=''; $('results').innerHTML=''; }
+
+// ---------- 직원: 적립/차감 저장 ----------
+async function saveTx(type){
+  if(!sel) return;
+  const amount=parseInt($('amount').value||0), machine=parseInt($('machine').value||0);
+  if(!amount||amount<=0) return toast('금액을 입력하세요');
+  if(type==='차감' && amount>sel.balance && !confirm(`누적 ${fmt(sel.balance)}P 보다 큽니다. 계속할까요?`)) return;
+  const { error } = await sb.from('transactions').insert({staff_key:me.key, member_id:sel.id, machine_no:machine, type, amount});
+  if(error) return toast('저장 실패: '+error.message);
+  sel.balance += (type==='차감' ? -amount : amount); $('selBal').textContent=fmt(sel.balance);
+  $('amount').value=''; toast(`${type} ${fmt(amount)} 저장`); loadMy();
+}
+async function loadMy(){
+  const [s,e]=bizRange(bizDate(),bizDate());
+  const { data } = await sb.from('transaction_view').select('*').eq('staff_key',me.key).is('deleted_at',null)
+    .gte('created_at',s).lt('created_at',e).order('created_at',{ascending:false}).limit(50);
+  $('myList').innerHTML=(data||[]).map(t=>`<div class="item"><div><div class="name">${t.member_name}</div>
+    <div class="sub">${hhmm(t.created_at)} · 기계 ${t.machine_no}</div></div><div class="amt ${t.type}">${t.type} ${fmt(t.amount)}</div></div>`).join('')
+    || '<div class="sub" style="padding:8px">아직 없음</div>';
+}
+
+// ---------- 관리자 ----------
+function tab(name, btn){ document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('on')); btn.classList.add('on');
+  ['settle','records','members','staffs','input'].forEach(n=>$('t-'+n).classList.toggle('hidden', n!==name));
+  if(name==='members') loadMembers(); if(name==='staffs') loadStaffs(); }
+
+async function loadSettle(){
+  const [s,e]=bizRange($('d1').value,$('d2').value);
+  let r=sb.from('transaction_view').select('*').is('deleted_at',null).gte('created_at',s).lt('created_at',e).order('created_at',{ascending:false}).limit(2000);
+  if($('fMachine').value) r=r.eq('machine_no',parseInt($('fMachine').value));
+  if($('fKey').value.trim()) r=r.eq('staff_key',$('fKey').value.trim().toUpperCase());
+  const { data } = await r; lastRows=data||[];
+  $('cutInfo').textContent=`기준: ${$('d1').value} 07시 ~ 다음날 07시 (마감 ${cutoff}시)`;
+  const sum={적립:0,차감:0,서비스:0,c:{적립:0,차감:0,서비스:0}}, mach={};
+  lastRows.forEach(t=>{ sum[t.type]+=t.amount; sum.c[t.type]++;
+    mach[t.machine_no]??={적립:0,차감:0,서비스:0}; mach[t.machine_no][t.type]+=t.amount; });
+  const { data: tot } = await sb.from('member_balances').select('balance');
+  const total=(tot||[]).reduce((a,b)=>a+b.balance,0);
+  $('sumBox').innerHTML=`
+    <div><div class="k">적립 (${sum.c.적립}건)</div><div class="v" style="color:var(--blue)">${fmt(sum.적립)}</div></div>
+    <div><div class="k">차감 (${sum.c.차감}건)</div><div class="v" style="color:var(--red)">${fmt(sum.차감)}</div></div>
+    <div><div class="k">서비스 (${sum.c.서비스}건)</div><div class="v" style="color:var(--green)">${fmt(sum.서비스)}</div></div>
+    <div><div class="k">차이 (적립−차감)</div><div class="v">${fmt(sum.적립-sum.차감)}</div></div>
+    <div style="grid-column:1/3"><div class="k">전체 회원 누적 포인트</div><div class="v">${fmt(total)}</div></div>`;
+  $('byMachine').innerHTML=Object.keys(mach).sort((a,b)=>a-b).map(k=>`<tr><td>${k}</td><td>${fmt(mach[k].적립)}</td><td>${fmt(mach[k].차감)}</td><td>${fmt(mach[k].서비스)}</td><td>${fmt(mach[k].적립-mach[k].차감)}</td></tr>`).join('');
+  $('recBody').innerHTML=lastRows.map(t=>`<tr><td>${dt(t.created_at)}</td><td>${t.staff_key||''}</td><td>${t.member_name}<br><span class="sub">${t.phone}</span></td>
+    <td>${t.machine_no}</td><td class="amt ${t.type}">${fmt(t.amount)}</td><td><button class="del" onclick="delTx(${t.id})">삭제</button></td></tr>`).join('');
+}
+async function delTx(id){ if(!confirm('이 기록을 삭제할까요?')) return;
+  const { error } = await sb.from('transactions').update({deleted_at:new Date().toISOString()}).eq('id',id);
+  if(error) return toast('실패'); toast('삭제됨'); loadSettle(); }
+
+function downloadCsv(){
+  const head='시간,직원키,회원명,전화번호,기계번호,구분,금액\n';
+  const body=lastRows.map(t=>[dt(t.created_at),t.staff_key,t.member_name,t.phone,t.machine_no,t.type,t.amount].join(',')).join('\n');
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+head+body],{type:'text/csv'}));
+  a.download=`정산_${$('d1').value}_${$('d2').value}.csv`; a.click();
+}
+
+async function loadMembers(){
+  const q=$('mq').value.trim();
+  let r=sb.from('member_balances').select('*').order('last_visit',{ascending:false,nullsFirst:false}).limit(200);
+  if(q) r = /^\d+$/.test(q) ? r.like('phone',`%${q}%`) : r.ilike('name',`%${q}%`);
+  const { data } = await r;
+  $('memberList').innerHTML=(data||[]).map(m=>`<div class="item"><div><div class="name">${m.name}${m.active?'':' (비활성)'}</div>
+    <div class="sub">${m.phone} · 최근 ${m.last_visit?dt(m.last_visit):'-'}</div></div>
+    <div style="text-align:right"><b>${fmt(m.balance)} P</b><br><button class="del" onclick="toggleMember(${m.id},${!m.active})">${m.active?'비활성화':'활성화'}</button></div></div>`).join('');
+}
+async function toggleMember(id, active){ await sb.from('members').update({active}).eq('id',id); loadMembers(); }
+
+async function loadStaffs(){
+  const { data } = await sb.from('staff_keys').select('*').order('created_at');
+  $('staffList').innerHTML=(data||[]).map(s=>`<div class="item"><div><div class="name">${s.name} <span class="sub">(${s.role==='admin'?'관리자':'직원'})</span></div>
+    <div class="sub">키: ${s.key}${s.active?'':' · 정지됨'}</div></div>
+    <button class="del" onclick="toggleStaff('${s.key}',${!s.active})">${s.active?'정지':'활성화'}</button></div>`).join('');
+}
+async function addStaff(){
+  const name=$('stName').value.trim(), key=$('stKey').value.trim().toUpperCase(), role=$('stRole').value;
+  if(!name||key.length<4) return toast('이름/키 확인(키 4자 이상)');
+  const { error } = await sb.from('staff_keys').insert({name,key,role});
+  if(error) return toast('실패: '+error.message);
+  $('stName').value=''; $('stKey').value=''; toast('추가됨'); loadStaffs();
+}
+async function toggleStaff(key, active){ await sb.from('staff_keys').update({active}).eq('key',key); loadStaffs(); }
+
+init();
+</script>
+</body>
+</html>
